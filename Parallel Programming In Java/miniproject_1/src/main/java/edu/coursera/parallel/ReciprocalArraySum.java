@@ -1,6 +1,8 @@
 package edu.coursera.parallel;
 
-import java.util.concurrent.RecursiveAction;
+import java.util.concurrent.*;
+import java.util.function.*;
+import java.util.stream.*;
 
 /**
  * Class wrapping methods for implementing reciprocal array sum in parallel.
@@ -125,7 +127,10 @@ public final class ReciprocalArraySum {
 
         @Override
         protected void compute() {
-            // TODO
+            value = 0 ;
+            for(int i = startIndexInclusive ; i < endIndexExclusive ; i++) {
+                value += 1/input[i];
+            }
         }
     }
 
@@ -143,10 +148,13 @@ public final class ReciprocalArraySum {
 
         double sum = 0;
 
-        // Compute sum of reciprocals of array elements
-        for (int i = 0; i < input.length; i++) {
-            sum += 1 / input[i];
-        }
+        ReciprocalArraySumTask left = new ReciprocalArraySumTask(0, input.length / 2, input);
+        ReciprocalArraySumTask right = new ReciprocalArraySumTask(input.length / 2, input.length, input);
+        left.fork();
+        right.compute();
+        left.join();
+
+        sum = left.getValue() + right.getValue();
 
         return sum;
     }
@@ -163,13 +171,33 @@ public final class ReciprocalArraySum {
      */
     protected static double parManyTaskArraySum(final double[] input,
             final int numTasks) {
-        double sum = 0;
-
-        // Compute sum of reciprocals of array elements
-        for (int i = 0; i < input.length; i++) {
-            sum += 1 / input[i];
-        }
+        double sum;
+        final ReciprocalArraySumTask reciprocalArraySumTasks[] = IntStream.range(0, numTasks)
+                                                .mapToObj(getReciprocalArraySumTask(input, numTasks))
+                                                .toArray(ReciprocalArraySumTask[]::new);
+        forkTasks(numTasks - 1, reciprocalArraySumTasks);
+        reciprocalArraySumTasks[numTasks - 1].compute();
+        joinTasks(numTasks - 1, reciprocalArraySumTasks);
+        sum = getSum(numTasks, reciprocalArraySumTasks);
 
         return sum;
+    }
+
+    private static void forkTasks(final int numTasks, final ReciprocalArraySumTask[] arr) {
+        IntStream.range(0, numTasks).forEach(i -> arr[i].fork());
+    }
+
+    private static IntFunction<ReciprocalArraySumTask> getReciprocalArraySumTask(final double[] input,
+                                                                                 final int numTasks) {
+        return index -> new ReciprocalArraySumTask(getChunkStartInclusive(index, numTasks, input.length),
+                                               getChunkEndExclusive(index, numTasks, input.length), input);
+    }
+
+    private static double getSum(final int numTasks, final ReciprocalArraySumTask[] arr) {
+        return IntStream.range(0, numTasks).mapToDouble(i -> arr[i].getValue()).sum();
+    }
+
+    private static void joinTasks(final int numTasks, final ReciprocalArraySumTask[] arr) {
+        IntStream.range(0, numTasks).forEach(i -> arr[i].join());
     }
 }
